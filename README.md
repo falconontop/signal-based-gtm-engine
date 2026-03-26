@@ -4,7 +4,7 @@ A system designed to replace manual outbound with signal-driven, AI-assisted pip
 
 Built for B2B SaaS teams (10–200 employees) that need predictable pipeline without scaling headcount. The agent handles the intelligence-heavy work — scoring, research, personalization — while purpose-built tools handle sending, CRM, and enrichment at scale.
 
-→ **[View interactive architecture]((https://falconontop.github.io/signal-based-gtm-engine/))** · **[One-page system overview (PDF)](./docs/gtm-engine-onepager.pdf)**
+→ → **[View interactive architecture](https://falconontop.github.io/signal-based-gtm-engine/)** · **[One-page system overview (PDF)](./docs/gtm-engine-onepager.pdf)**
 
 ---
 
