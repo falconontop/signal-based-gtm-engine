@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal-Based GTM Engine — Designed & Implemented</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0c0d0f;
+  --surface: #131417;
+  --surface2: #1a1c20;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #e8e6e0;
+  --muted: rgba(232,230,224,0.4);
+  --dim: rgba(232,230,224,0.2);
+
+  --agent: #b8f060;
+  --agent-dim: rgba(184,240,96,0.08);
+  --agent-border: rgba(184,240,96,0.25);
+
+  --hybrid: #4de8c0;
+  --hybrid-dim: rgba(77,232,192,0.08);
+  --hybrid-border: rgba(77,232,192,0.2);
+
+  --ext: rgba(255,255,255,0.18);
+  --ext-dim: rgba(255,255,255,0.03);
+  --ext-border: rgba(255,255,255,0.1);
+
+  --amber: #f5c060;
+  --coral: #f07060;
+  --blue: #60a8f5;
+
+  --font: 'Bricolage Grotesque', sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  padding: 48px 40px 80px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ── HEADER ── */
+.header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  align-items: end;
+  margin-bottom: 52px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.header-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--agent);
+  margin-bottom: 14px;
+}
+h1 {
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -.02em;
+}
+h1 em { color: var(--agent); font-style: normal; }
+.header-hook {
+  margin-top: 14px;
+  font-size: 15px;
+  font-weight: 400;
+  color: rgba(232,230,224,0.75);
+  line-height: 1.5;
+  max-width: 500px;
+  border-left: 2px solid var(--agent);
+  padding-left: 12px;
+}
+.header-sub {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 480px;
+}
+
+/* legend */
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 180px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.legend-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+
+/* ── MAIN LAYOUT ── */
+.canvas {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto;
+  gap: 16px;
+  position: relative;
+}
+
+/* ── SECTION LABELS ── */
+.col-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  padding-left: 2px;
+}
+
+/* ── NODE CARDS ── */
+.node {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px 16px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, transform .15s;
+  position: relative;
+  overflow: hidden;
+}
+.node::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity .2s;
+  border-radius: 10px;
+}
+.node:hover { transform: translateY(-2px); }
+
+.node.agent { border-color: var(--agent-border); }
+.node.agent::before { background: var(--agent-dim); }
+.node.agent:hover { border-color: var(--agent); }
+.node.agent:hover::before { opacity: 1; }
+
+.node.hybrid { border-color: var(--hybrid-border); }
+.node.hybrid::before { background: var(--hybrid-dim); }
+.node.hybrid:hover { border-color: var(--hybrid); }
+.node.hybrid:hover::before { opacity: 1; }
+
+.node.external {
+  border-color: var(--ext-border);
+  background: var(--surface);
+  opacity: .75;
+}
+.node.external:hover { opacity: 1; transform: none; }
+
+.node-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.node-tag .pip {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.agent .pip { background: var(--agent); }
+.hybrid .pip { background: var(--hybrid); }
+.external .pip { background: var(--ext); }
+.agent .node-tag { color: var(--agent); }
+.hybrid .node-tag { color: var(--hybrid); }
+.external .node-tag { color: var(--muted); }
+
+.node-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  line-height: 1.2;
+  position: relative;
+}
+.node-desc {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.7;
+  position: relative;
+}
+
+/* Step number badge */
+.step-num {
+  position: absolute;
+  top: 16px; right: 16px;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 300;
+  opacity: .1;
+  line-height: 1;
+}
+
+/* ── DETAIL PANEL ── */
+.detail {
+  grid-column: 1 / -1;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+  display: none;
+  animation: slideIn .2s ease;
+}
+.detail.open { display: block; }
+@keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+.detail-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+}
+.detail-section {
+  padding: 24px;
+  border-right: 1px solid var(--border);
+}
+.detail-section:last-child { border-right: none; }
+.detail-section-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.detail-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  line-height: 1.3;
+}
+
+.detail-list { list-style: none; }
+.detail-list li {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: rgba(232,230,224,0.65);
+  line-height: 1.8;
+  padding-left: 14px;
+  position: relative;
+}
+.detail-list li::before {
+  content: '→';
+  position: absolute; left: 0;
+  color: var(--agent);
+  opacity: .6;
+}
+
+.code-block {
+  background: rgba(0,0,0,.4);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(232,230,224,.7);
+  line-height: 1.8;
+  white-space: pre;
+  overflow-x: auto;
+}
+.code-block .kw { color: var(--agent); }
+.code-block .str { color: var(--amber); }
+.code-block .cm { color: var(--muted); opacity: .6; }
+
+.detail-close {
+  position: absolute;
+  top: 16px; right: 20px;
+  background: none; border: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color .15s;
+}
+.detail-close:hover { color: var(--text); }
+
+/* ── FLOW ARROWS ── */
+.flow-arrow {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+.arrow-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border2), transparent);
+  position: relative;
+}
+.arrow-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.arrow-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--border2);
+  flex-shrink: 0;
+}
+
+/* ── CONNECTOR SVG ── */
+.connector-row {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  padding: 2px 0;
+}
+
+/* ── FULL WIDTH NODES ── */
+.node.full { grid-column: 1 / -1; }
+.node.half { grid-column: span 1; }
+
+/* SPECIAL: integration band */
+.integration-band {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  position: relative;
+}
+.integration-band::before {
+  content: 'External integrations — keep as-is';
+  position: absolute;
+  top: -10px; left: 20px;
+  background: var(--bg);
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.int-pill {
+  padding: 10px 14px;
+  border: 1px solid var(--ext-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color .2s;
+}
+.int-pill:hover { border-color: rgba(255,255,255,0.22); }
+.int-pill-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  opacity: .6;
+}
+.int-pill-role {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.int-pill-why {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--dim);
+  margin-top: 2px;
+  font-style: italic;
+}
+
+/* ── FEEDBACK BAND ── */
+.feedback-band {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(240,112,96,0.2);
+  border-radius: 10px;
+  padding: 18px 20px;
+  background: rgba(240,112,96,0.04);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 20px;
+  align-items: center;
+}
+.fb-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+.fb-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--coral);
+  margin-bottom: 4px;
+}
+.fb-desc {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.fb-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+}
+.fb-metric {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+}
+.fb-metric span { color: var(--coral); }
+
+/* ── N8N WRAPPER ── */
+.n8n-band {
+  grid-column: 1 / -1;
+  border: 1px dashed rgba(96,168,245,0.25);
+  border-radius: 10px;
+  padding: 14px 20px;
+  background: rgba(96,168,245,0.03);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.n8n-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--blue);
+  opacity: .6;
+  white-space: nowrap;
+}
+.n8n-desc {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* Staggered entrance */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.canvas > * {
+  animation: fadeUp .4s ease both;
+}
+.canvas > *:nth-child(1)  { animation-delay: .05s; }
+.canvas > *:nth-child(2)  { animation-delay: .08s; }
+.canvas > *:nth-child(3)  { animation-delay: .11s; }
+.canvas > *:nth-child(4)  { animation-delay: .14s; }
+.canvas > *:nth-child(5)  { animation-delay: .17s; }
+.canvas > *:nth-child(6)  { animation-delay: .20s; }
+.canvas > *:nth-child(7)  { animation-delay: .23s; }
+.canvas > *:nth-child(8)  { animation-delay: .26s; }
+.canvas > *:nth-child(9)  { animation-delay: .29s; }
+.canvas > *:nth-child(10) { animation-delay: .32s; }
+.canvas > *:nth-child(11) { animation-delay: .35s; }
+.canvas > *:nth-child(12) { animation-delay: .38s; }
+.canvas > *:nth-child(13) { animation-delay: .41s; }
+.canvas > *:nth-child(14) { animation-delay: .44s; }
+.canvas > *:nth-child(15) { animation-delay: .47s; }
+.canvas > *:nth-child(16) { animation-delay: .50s; }
+
+/* Pulse on agent nodes */
+@keyframes borderPulse {
+  0%, 100% { border-color: var(--agent-border); }
+  50% { border-color: rgba(184,240,96,0.5); }
+}
+
+/* active state */
+.node.active {
+  border-color: var(--agent) !important;
+  background: var(--agent-dim) !important;
+}
+.node.external.active {
+  border-color: rgba(255,255,255,.3) !important;
+  background: rgba(255,255,255,.04) !important;
+}
+.node.hybrid.active {
+  border-color: var(--hybrid) !important;
+  background: var(--hybrid-dim) !important;
+}
+
+/* ── CONTEXT BAND ── */
+.context-band {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.context-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 22px;
+}
+.context-card-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.context-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  color: var(--text);
+}
+.context-list { list-style: none; }
+.context-list li {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: rgba(232,230,224,0.55);
+  line-height: 1.8;
+  padding-left: 16px;
+  position: relative;
+}
+.context-list li::before {
+  content: '✕';
+  position: absolute; left: 0;
+  color: var(--coral);
+  font-size: 9px;
+  top: 2px;
+  opacity: .7;
+}
+.context-card.example { border-color: rgba(184,240,96,0.15); }
+.example-scenario {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.example-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.example-key {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 52px;
+}
+.example-val {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: rgba(232,230,224,0.7);
+  line-height: 1.5;
+}
+.example-results {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.example-result-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--agent);
+  margin-bottom: 8px;
+  opacity: .7;
+}
+.example-result-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: rgba(232,230,224,0.65);
+  line-height: 1.8;
+}
+.example-result-item::before {
+  content: '';
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--agent);
+  flex-shrink: 0;
+  opacity: .7;
+}
+
+/* ── ROLE STRIP ── */
+.role-strip {
+  margin-bottom: 52px;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--agent);
+  border-radius: 0 10px 10px 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 24px;
+  align-items: center;
+}
+.role-strip-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--agent);
+  white-space: nowrap;
+}
+.role-strip-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.role-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(232,230,224,0.7);
+  background: rgba(184,240,96,0.06);
+  border: 1px solid rgba(184,240,96,0.15);
+  border-radius: 4px;
+  padding: 4px 10px;
+}
+
+/* ── RESULT LAYER ── */
+.result-layer {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border: 1px solid rgba(184,240,96,0.2);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.result-layer-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(184,240,96,0.1);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(184,240,96,0.04);
+}
+.result-layer-eyebrow {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--agent);
+}
+.result-layer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+}
+.result-item {
+  padding: 18px 20px;
+  border-right: 1px solid var(--border);
+}
+.result-item:last-child { border-right: none; }
+.result-num {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 300;
+  color: var(--agent);
+  line-height: 1;
+  margin-bottom: 6px;
+  letter-spacing: -.02em;
+}
+.result-num .est {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 2px;
+}
+.result-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.result-desc {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ── REALITY MODE ── */
+.reality-layer {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border: 1px solid rgba(240,112,96,0.2);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.reality-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(240,112,96,0.1);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(240,112,96,0.04);
+}
+.reality-eyebrow {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+.reality-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.reality-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+}
+.reality-item {
+  padding: 18px 20px;
+  border-right: 1px solid var(--border);
+}
+.reality-item:last-child { border-right: none; }
+.reality-signal {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--coral);
+  opacity: .7;
+  margin-bottom: 6px;
+}
+.reality-issue {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+.reality-fix {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ── FOOTER ── */
+.footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.footer-note {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  font-style: italic;
+}
+.footer-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--agent);
+  letter-spacing: .1em;
+  opacity: .5;
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <div class="header-eyebrow">Designed & Implemented · B2B GTM Systems</div>
+    <h1>Signal-Based GTM Engine —<br><em>Architecture & Implementation</em></h1>
+    <p class="header-hook">A system designed to replace manual outbound with signal-driven, AI-assisted pipeline generation.</p>
+    <p class="header-sub">How each layer connects — what the agent owns, what stays external, how data flows end to end. Click any node for implementation detail.</p>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:var(--agent)"></span>Agent-owned — built this</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--hybrid)"></span>Hybrid — agent + external</div>
+    <div class="legend-item"><span class="legend-dot" style="background:rgba(255,255,255,0.25)"></span>External — intentionally kept</div>
+  </div>
+</div>
+
+<!-- ROLE STRIP -->
+<div class="role-strip">
+  <div class="role-strip-label">My role</div>
+  <div class="role-strip-items">
+    <span class="role-chip">Designed full system architecture</span>
+    <span class="role-chip">Built scoring + filtering logic</span>
+    <span class="role-chip">Implemented signal research layer</span>
+    <span class="role-chip">Engineered sequence generation prompts</span>
+    <span class="role-chip">Defined external tool boundaries</span>
+    <span class="role-chip">Iterated based on reply + conversion data</span>
+  </div>
+</div>
+
+<!-- CONTEXT BAND: not-for + live example -->
+<div class="context-band">
+
+  <div class="context-card">
+    <div class="context-card-label">Scope</div>
+    <div class="context-card-title">When NOT to use this system</div>
+    <ul class="context-list">
+      <li>Low-ticket, high-volume B2C — signal cost outweighs value per lead</li>
+      <li>Markets without clear digital signals — no job posts, no funding data, no traceable intent</li>
+      <li>Early-stage products without a defined ICP — scoring logic needs a target to score against</li>
+      <li>Teams unwilling to do the 15-min review step — garbage in, garbage out at sending stage</li>
+    </ul>
+  </div>
+
+  <div class="context-card example">
+    <div class="context-card-label">Realistic example</div>
+    <div class="context-card-title">What a qualified run looks like</div>
+    <div class="example-scenario">
+      <div class="example-row">
+        <span class="example-key">Target</span>
+        <span class="example-val">Mid-size B2B SaaS, 50–150 employees, DACH region</span>
+      </div>
+      <div class="example-row">
+        <span class="example-key">Signal</span>
+        <span class="example-val">Hiring 2 SDRs + Series A announced 6 weeks prior</span>
+      </div>
+      <div class="example-row">
+        <span class="example-key">Hook</span>
+        <span class="example-val">"Scaling your outbound team — without a playbook yet?"</span>
+      </div>
+    </div>
+    <div class="example-results">
+      <div class="example-result-label">Observed output</div>
+      <div class="example-result-item">Reply rate well above cold email baseline</div>
+      <div class="example-result-item">Faster SQL conversion — context already established</div>
+      <div class="example-result-item">Reps spending time on warm leads, not research</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MAIN CANVAS -->
+<div class="canvas" id="canvas">
+
+  <!-- ROW 1: INPUT -->
+  <div class="node agent full" data-id="intake" onclick="toggle(this)">
+    <span class="step-num">01</span>
+    <div class="node-tag"><span class="pip"></span>Agent — Input</div>
+    <div class="node-title">Lead Intake</div>
+    <div class="node-desc">Apollo CSV export lands here. Raw, unenriched. The agent's entry point — reads file, parses structure, prepares for scoring pipeline.</div>
+  </div>
+
+  <!-- DETAIL: intake -->
+  <div class="detail" id="detail-intake">
+    <div style="position:relative; padding: 20px 20px 0;">
+      <button class="detail-close" onclick="closeDetail('intake')">✕ close</button>
+    </div>
+    <div class="detail-inner">
+      <div class="detail-section">
+        <div class="detail-section-label">What happens here</div>
+        <div class="detail-section-title">File parsing + schema validation</div>
+        <ul class="detail-list">
+          <li>Read Apollo CSV or JSON export from /data/input/</li>
+          <li>Validate required fields (company, domain, headcount, industry)</li>
+          <li>Deduplicate against existing CRM leads</li>
+          <li>Output: normalized lead array ready for enrichment</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Code pattern</div>
+        <div class="code-block"><span class="kw">async</span> <span class="kw">function</span> ingestLeads(filepath) {
+  <span class="cm">// parse + validate</span>
+  <span class="kw">const</span> raw = <span class="kw">await</span> parseCSV(filepath)
+  <span class="kw">const</span> valid = raw.filter(validateSchema)
+  <span class="kw">const</span> deduped = removeDuplicates(valid)
+  <span class="kw">return</span> deduped
+  <span class="cm">// → passes to enrichment</span>
+}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Input / Output</div>
+        <div class="detail-section-title">Format contract</div>
+        <ul class="detail-list">
+          <li>In: Apollo export CSV (any column order)</li>
+          <li>Out: leads[] with normalized keys</li>
+          <li>Drops: missing domain, missing industry</li>
+          <li>Flags: duplicates → skip with log</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOW ARROW -->
+  <div class="flow-arrow">
+    <div class="arrow-dot"></div>
+    <div class="arrow-line"></div>
+    <div class="arrow-label">raw leads →</div>
+    <div class="arrow-line"></div>
+    <div class="arrow-dot"></div>
+  </div>
+
+  <!-- ROW 2: ENRICHMENT (3 col) -->
+  <div class="node agent" data-id="scoring-enrich" onclick="toggle(this)">
+    <span class="step-num">02</span>
+    <div class="node-tag"><span class="pip"></span>Agent — Research</div>
+    <div class="node-title">Signal Detection</div>
+    <div class="node-desc">Agent web-searches each company. Checks job boards, LinkedIn, Crunchbase. Builds a raw signal object per lead.</div>
+  </div>
+
+  <div class="node hybrid" data-id="clay-enrich" onclick="toggle(this)">
+    <span class="step-num">02b</span>
+    <div class="node-tag"><span class="pip"></span>Hybrid — Clay</div>
+    <div class="node-title">Contact Enrichment</div>
+    <div class="node-desc">Clay handles verified emails, phone, LinkedIn URLs at scale. Agent can't reliably replicate this — don't try.</div>
+  </div>
+
+  <div class="node agent" data-id="scoring" onclick="toggle(this)">
+    <span class="step-num">03</span>
+    <div class="node-tag"><span class="pip"></span>Agent — Core Logic</div>
+    <div class="node-title">Fit + Intent Scoring</div>
+    <div class="node-desc">Combines enrichment data into a 0–100 score. Filters to qualified leads only. The quality gate of the whole system.</div>
+  </div>
+
+  <!-- DETAIL: signal -->
+  <div class="detail" id="detail-scoring-enrich">
+    <div style="position:relative; padding: 20px 20px 0;">
+      <button class="detail-close" onclick="closeDetail('scoring-enrich')">✕ close</button>
+    </div>
+    <div class="detail-inner">
+      <div class="detail-section">
+        <div class="detail-section-label">Signals the agent detects</div>
+        <div class="detail-section-title">Per-company research</div>
+        <ul class="detail-list">
+          <li>Job postings (SDR / AE / RevOps / GTM)</li>
+          <li>LinkedIn company headcount growth</li>
+          <li>Recent funding rounds (Crunchbase)</li>
+          <li>Tech stack signals (BuiltWith, job post keywords)</li>
+          <li>Content activity (posting frequency, ads running)</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Code pattern</div>
+        <div class="code-block"><span class="kw">async</span> detectSignals(company) {
+  <span class="kw">const</span> jobs = <span class="kw">await</span> searchJobs(company)
+  <span class="kw">const</span> funding = <span class="kw">await</span> checkFunding(company)
+  <span class="kw">const</span> stack = <span class="kw">await</span> detectStack(company)
+  <span class="kw">return</span> {
+    hiringSignal: jobs.length > 0,
+    fundingSignal: funding.recent,
+    stackSignal: stack.hasNewCRM,
+    rawJobs: jobs   <span class="cm">// used for email hook</span>
+  }
+}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Output</div>
+        <div class="detail-section-title">Signal object</div>
+        <ul class="detail-list">
+          <li>Structured JSON per company</li>
+          <li>Specific job titles found (used in email hook)</li>
+          <li>Funding amount + date if available</li>
+          <li>Feeds directly into scoring engine</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL: clay -->
+  <div class="detail" id="detail-clay-enrich">
+    <div style="position:relative; padding: 20px 20px 0;">
+      <button class="detail-close" onclick="closeDetail('clay-enrich')">✕ close</button>
+    </div>
+    <div class="detail-inner">
+      <div class="detail-section">
+        <div class="detail-section-label">Why keep Clay external</div>
+        <div class="detail-section-title">What Clay does that agents can't match</div>
+        <ul class="detail-list">
+          <li>Verified business emails (deliverability matters)</li>
+          <li>Direct dials at scale</li>
+          <li>LinkedIn profile URLs enriched in bulk</li>
+          <li>Waterfall enrichment across 50+ data sources</li>
+          <li>Speed: 1000 leads in minutes vs hours</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Integration pattern</div>
+        <div class="detail-section-title">Handoff flow</div>
+        <ul class="detail-list">
+          <li>Export scored leads list → upload to Clay</li>
+          <li>Run enrichment table in Clay</li>
+          <li>Export Clay result → agent reads back</li>
+          <li>Agent merges: signals + contact data</li>
+          <li>Net: best of both in one lead record</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Cost note</div>
+        <div class="detail-section-title">When to skip Clay</div>
+        <ul class="detail-list">
+          <li>Small batches (&lt;50 leads) — manual lookup OK</li>
+          <li>LinkedIn outreach only — URL less critical</li>
+          <li>Testing a new segment — agent-only first</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL: scoring -->
+  <div class="detail" id="detail-scoring">
+    <div style="position:relative; padding: 20px 20px 0;">
+      <button class="detail-close" onclick="closeDetail('scoring')">✕ close</button>
+    </div>
+    <div class="detail-inner">
+      <div class="detail-section">
+        <div class="detail-section-label">Scoring logic</div>
+        <div class="detail-section-title">Fit score (0–100)</div>
+        <ul class="detail-list">
+          <li>Company size 10–200 → +20</li>
+          <li>Industry: SaaS / Tech → +20</li>
+          <li>Hiring for sales roles → +15</li>
+          <li>Has CRM (HubSpot/SF) → +15</li>
+          <li>Subscription / high ACV → +10</li>
+          <li>Threshold: ≥60 passes through</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Intent scoring</div>
+        <div class="detail-section-title">Intent score (0–100)</div>
+        <ul class="detail-list">
+          <li>Hiring signal → +30</li>
+          <li>Funding / growth → +25</li>
+          <li>Website activity → +20</li>
+          <li>Tech stack change → +15</li>
+          <li>Threshold: ≥40 passes through</li>
+          <li>Both thresholds must pass → MQL</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Code pattern</div>
+        <div class="code-block"><span class="kw">function</span> scoreLead(lead, signals) {
+  <span class="kw">let</span> fit = 0, intent = 0
+  <span class="cm">// fit</span>
+  <span class="kw">if</span> (inRange(lead.size,10,200)) fit+=20
+  <span class="kw">if</span> (lead.industry===<span class="str">'SaaS'</span>) fit+=20
+  <span class="kw">if</span> (signals.hiringSignal) fit+=15
+  <span class="cm">// intent</span>
+  <span class="kw">if</span> (signals.hiringSignal) intent+=30
+  <span class="kw">if</span> (signals.fundingSignal) intent+=25
+  <span class="kw">return</span> { fit, intent,
+    qualified: fit>=60 && intent>=40 }
+}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOW ARROW -->
+  <div class="flow-arrow">
+    <div class="arrow-dot"></div>
+    <div class="arrow-line"></div>
+    <div class="arrow-label">qualified leads →</div>
+    <div class="arrow-line"></div>
+    <div class="arrow-dot"></div>
+  </div>
+
+  <!-- ROW 3: BRIEF + SEQUENCE -->
+  <div class="node agent" data-id="brief" onclick="toggle(this)" style="grid-column: span 1;">
+    <span class="step-num">04</span>
+    <div class="node-tag"><span class="pip"></span>Agent — Intelligence</div>
+    <div class="node-title">Signal Brief</div>
+    <div class="node-desc">Per qualified lead: synthesizes signals into a structured brief. The context that makes personalization real, not fake.</div>
+  </div>
+
+  <div class="node agent" data-id="sequence" onclick="toggle(this)" style="grid-column: span 2;">
+    <span class="step-num">05</span>
+    <div class="node-tag"><span class="pip"></span>Agent — Generation</div>
+    <div class="node-title">4-Touch Email Sequence Generation</div>
+    <div class="node-desc">Uses signal brief + ICP angle + your messaging framework to write Day 1, 3, 6, 10 emails. Structured output. AI-assisted but grounded in actual company signals — not generic copy.</div>
+  </div>
+
+  <!-- DETAIL: brief -->
+  <div class="detail" id="detail-brief">
+    <div style="position:relative; padding: 20px 20px 0;">
+      <button class="detail-close" onclick="closeDetail('brief')">✕ close</button>
+    </div>
+    <div class="detail-inner">
+      <div class="detail-section">
+        <div class="detail-section-label">What's in a signal brief</div>
+        <div class="detail-section-title">Structured per-lead context</div>
+        <ul class="detail-list">
+          <li>Company name, size, industry, HQ</li>
+          <li>Key signal: "Hiring 2 SDRs + 1 RevOps"</li>
+          <li>Hook angle: "scaling outbound without playbook"</li>
+          <li>Funding context if relevant</li>
+          <li>Existing tools (CRM, SEP detected)</li>
+          <li>Decision maker name + title</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Why this step matters</div>
+        <div class="detail-section-title">The personalization root</div>
+        <ul class="detail-list">
+          <li>Email gen references brief — not raw data</li>
+          <li>Keeps generation prompt clean and short</li>
+          <li>Brief is reviewable by human before sending</li>
+          <li>Reusable across channels (email + LinkedIn)</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Output format</div>
+        <div class="code-block">{
+  <span class="str">"company"</span>: <span class="str">"Acme SaaS GmbH"</span>,
+  <span class="str">"signal"</span>: <span class="str">"hiring 2 SDRs + RevOps"</span>,
+  <span class="str">"hook"</span>: <span class="str">"scaling outbound team"</span>,
+  <span class="str">"angle"</span>: <span class="str">"no playbook yet"</span>,
+  <span class="str">"contact"</span>: <span class="str">"Jan Müller, VP Sales"</span>,
+  <span class="str">"crm"</span>: <span class="str">"HubSpot"</span>
+}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL: sequence -->
+  <div class="detail" id="detail-sequence">
+    <div style="position:relative; padding: 20px 20px 0;">
+      <button class="detail-close" onclick="closeDetail('sequence')">✕ close</button>
+    </div>
+    <div class="detail-inner">
+      <div class="detail-section">
+        <div class="detail-section-label">The 4 touches</div>
+        <div class="detail-section-title">Sequence structure</div>
+        <ul class="detail-list">
+          <li>Day 1 — Signal hook: "Saw you're hiring SDRs..."</li>
+          <li>Day 3 — Value add: relevant insight / stat</li>
+          <li>Day 6 — Case angle: proof for their exact situation</li>
+          <li>Day 10 — Break-up: concise, no hard sell</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">System prompt design</div>
+        <div class="detail-section-title">What makes it not generic</div>
+        <ul class="detail-list">
+          <li>Your voice + tone baked into system prompt</li>
+          <li>3 example sequences (few-shot) in prompt</li>
+          <li>Signal brief passed as structured context</li>
+          <li>AI-assisted but structured — few-shot examples enforce quality floor</li>
+          <li>Word count enforced per touch</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">This is 40% of the real work</div>
+        <div class="detail-section-title">Prompt engineering note</div>
+        <ul class="detail-list">
+          <li>Quality = quality of your system prompt</li>
+          <li>Needs real example emails from past wins</li>
+          <li>Needs explicit anti-patterns ("never say synergy")</li>
+          <li>Iterate on 20 leads before full batch</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOW ARROW -->
+  <div class="flow-arrow">
+    <div class="arrow-dot"></div>
+    <div class="arrow-line"></div>
+    <div class="arrow-label">structured output →</div>
+    <div class="arrow-line"></div>
+    <div class="arrow-dot"></div>
+  </div>
+
+  <!-- ROW 4: EXPORT -->
+  <div class="node agent full" data-id="export" onclick="toggle(this)">
+    <span class="step-num">06</span>
+    <div class="node-tag"><span class="pip"></span>Agent — Output</div>
+    <div class="node-title">Export Formatter</div>
+    <div class="node-desc">Outputs two files: a HubSpot-mapped import CSV and an Instantly campaign CSV with sequences pre-loaded. Human reviews → imports → done.</div>
+  </div>
+
+  <!-- DETAIL: export -->
+  <div class="detail" id="detail-export">
+    <div style="position:relative; padding: 20px 20px 0;">
+      <button class="detail-close" onclick="closeDetail('export')">✕ close</button>
+    </div>
+    <div class="detail-inner">
+      <div class="detail-section">
+        <div class="detail-section-label">File 1: HubSpot CSV</div>
+        <div class="detail-section-title">CRM import ready</div>
+        <ul class="detail-list">
+          <li>Fields: firstname, lastname, email, company</li>
+          <li>Custom: fit_score, intent_score, signal_hook</li>
+          <li>Lifecycle stage: Lead (MQL if both thresholds)</li>
+          <li>Lead source: "GTM Agent — [date]"</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">File 2: Instantly CSV</div>
+        <div class="detail-section-title">Campaign ready</div>
+        <ul class="detail-list">
+          <li>Fields: email, first_name, company_name</li>
+          <li>Custom vars: {{signal}}, {{hook}}, {{angle}}</li>
+          <li>4 email bodies pre-filled per lead</li>
+          <li>Import → map fields → launch in 10 min</li>
+        </ul>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-label">Human review step</div>
+        <div class="detail-section-title">Don't skip this</div>
+        <ul class="detail-list">
+          <li>Scan briefs for obvious mismatches</li>
+          <li>Spot-check 10% of email copy</li>
+          <li>Flag any competitor names slipping through</li>
+          <li>Takes 15 min for a 200-lead batch</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 5: EXTERNAL TOOLS -->
+  <div class="integration-band">
+    <div class="int-pill">
+      <div class="int-pill-name">HubSpot CRM</div>
+      <div class="int-pill-role">Pipeline stages, lifecycle tracking, deal routing</div>
+      <div class="int-pill-why">Don't replicate — mature infra</div>
+    </div>
+    <div class="int-pill">
+      <div class="int-pill-name">Instantly</div>
+      <div class="int-pill-role">Email sending, deliverability, warm-up, bounce handling</div>
+      <div class="int-pill-why">Domain rotation is non-trivial to build</div>
+    </div>
+    <div class="int-pill">
+      <div class="int-pill-name">Clay</div>
+      <div class="int-pill-role">Bulk verified contacts, waterfall enrichment</div>
+      <div class="int-pill-why">50+ data sources, not worth rebuilding</div>
+    </div>
+    <div class="int-pill">
+      <div class="int-pill-name">LinkedIn</div>
+      <div class="int-pill-role">Semi-manual outreach, connection requests</div>
+      <div class="int-pill-why">Anti-automation risk — stay human here</div>
+    </div>
+  </div>
+
+  <!-- FEEDBACK BAND -->
+  <div class="feedback-band">
+    <div class="fb-icon">↻</div>
+    <div>
+      <div class="fb-title">Feedback Loop — Weekly</div>
+      <div class="fb-desc">Agent ingests reply data + meeting conversion + sales notes → outputs scoring weight recommendations, segment performance report, and copy adjustments. System improves every cycle.</div>
+    </div>
+    <div class="fb-metrics">
+      <div class="fb-metric">tracks <span>reply rate</span></div>
+      <div class="fb-metric">tracks <span>meeting conversion</span></div>
+      <div class="fb-metric">refines <span>signal weights</span></div>
+      <div class="fb-metric">flags <span>low-quality sources</span></div>
+    </div>
+  </div>
+
+  <!-- N8N WRAPPER -->
+  <div class="n8n-band">
+    <div class="n8n-label">n8n wrapper</div>
+    <div class="n8n-desc">Optional: wrap the full CLI agent as a scheduled n8n workflow. Trigger daily → run agent → push exports to /outputs → notify Slack. Team wakes up to a fresh, scored, sequenced lead list every morning.</div>
+  </div>
+
+  <!-- RESULT LAYER -->
+  <div class="result-layer">
+    <div class="result-layer-header">
+      <div class="result-layer-eyebrow">Expected / observed impact</div>
+      <div class="result-layer-title">What this system actually changes</div>
+    </div>
+    <div class="result-grid">
+      <div class="result-item">
+        <div class="result-num">~3×<span class="est">est.</span></div>
+        <div class="result-label">Reply rate lift</div>
+        <div class="result-desc">Signal-grounded hooks vs generic cold email. Relevance is the variable, not volume.</div>
+      </div>
+      <div class="result-item">
+        <div class="result-num">~60%<span class="est">est.</span></div>
+        <div class="result-label">Fewer unqualified leads</div>
+        <div class="result-desc">Fit + Intent scoring filters noise before it ever reaches a sender or rep.</div>
+      </div>
+      <div class="result-item">
+        <div class="result-num">~80%<span class="est">est.</span></div>
+        <div class="result-label">Manual research saved</div>
+        <div class="result-desc">Signal detection + brief generation replaces hours of per-lead manual lookup.</div>
+      </div>
+      <div class="result-item">
+        <div class="result-num">↑<span class="est" style="font-size:14px">predictable</span></div>
+        <div class="result-label">Pipeline becomes systematic</div>
+        <div class="result-desc">Random outbound → repeatable, data-driven process. Compounds as feedback loop runs.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REALITY MODE -->
+  <div class="reality-layer">
+    <div class="reality-header">
+      <div class="reality-eyebrow">System limitations</div>
+      <div class="reality-title">Where this breaks — and what to do about it</div>
+    </div>
+    <div class="reality-grid">
+      <div class="reality-item">
+        <div class="reality-signal">Signal layer</div>
+        <div class="reality-issue">Signal noise in early batches</div>
+        <div class="reality-fix">Job board data is laggy. First 2–3 runs need manual brief validation before trusting automation. Calibrate signal weights on real reply data, not assumptions.</div>
+      </div>
+      <div class="reality-item">
+        <div class="reality-signal">Email layer</div>
+        <div class="reality-issue">Deliverability is not the agent's job</div>
+        <div class="reality-fix">Great copy doesn't matter if the domain isn't warmed up. Agent hands off to Instantly — but domain setup, DMARC, SPF, and warm-up are prerequisites the agent can't fix.</div>
+      </div>
+      <div class="reality-item">
+        <div class="reality-signal">Cost layer</div>
+        <div class="reality-issue">Clay gets expensive at scale</div>
+        <div class="reality-fix">Clay's waterfall enrichment costs rise linearly with volume. For &lt;100 leads/week, agent-only research is viable. Above that, Clay ROI is positive — but it's a real line item.</div>
+      </div>
+      <div class="reality-item">
+        <div class="reality-signal">Generation layer</div>
+        <div class="reality-issue">AI-assisted copy still needs human review (~10–15%)</div>
+        <div class="reality-fix">Hallucinated context, wrong seniority, tone mismatch — rare but real. The human review step at export isn't optional. 15 min per 200 leads is the actual cost of running this safely.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <div class="footer-note">Built on real implementation experience across B2B and D2C GTM systems. Estimates based on observed patterns — your numbers will vary.</div>
+  <div class="footer-tag">Claude Code · GTM Agent v1</div>
+</div>
+
+<script>
+let openDetails = {};
+
+function toggle(node) {
+  const id = node.dataset.id;
+  const detail = document.getElementById('detail-' + id);
+  if (!detail) return;
+
+  const isOpen = detail.classList.contains('open');
+
+  // Close all
+  document.querySelectorAll('.detail.open').forEach(d => d.classList.remove('open'));
+  document.querySelectorAll('.node.active').forEach(n => n.classList.remove('active'));
+
+  if (!isOpen) {
+    detail.classList.add('open');
+    node.classList.add('active');
+    // scroll into view gently
+    setTimeout(() => detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+  }
+}
+
+function closeDetail(id) {
+  const detail = document.getElementById('detail-' + id);
+  if (detail) detail.classList.remove('open');
+  document.querySelectorAll('.node.active').forEach(n => n.classList.remove('active'));
+}
+</script>
+</body>
+</html>
